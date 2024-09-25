@@ -32,4 +32,14 @@ class MovieAPI:
             return recommendation
         else:
             return None
-    
+    def get_movie_details(self, movie_id):
+        details_url = f"{self.BASE_URL}/movie/{movie_id}"
+        params = {
+            'api_key': self.api_key
+        }
+        response = requests.get(details_url, params=params)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None

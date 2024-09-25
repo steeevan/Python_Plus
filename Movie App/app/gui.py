@@ -58,7 +58,7 @@ class MovieRecommenderGUI:
                     self.listbox.delete(0,tk.END)
                     for movie in movies:
                         self.listbox.insert(tk.END,movie['title'])
-                    self.listbox.bind("<<ListboxSelect>>",lambda  evt: self.show_movie_details[self.listbox.curselection()[0]])
+                        self.listbox.bind("<<ListboxSelect>>", lambda evt: self.movie_details(movies[self.listbox.curselection()[0]]))
                 else:
                     self.show_movie_details(movies[0])
             else:
@@ -66,9 +66,50 @@ class MovieRecommenderGUI:
         else:
             messagebox.showwarning("input required","Please enter a movie title")
 
+    def movie_details(self,movie):
+        movie_details = self.movie_api.get_movie_details(movie['id'])
+        self.current_movie = movie_details
+        if movie_details:
+            details = self.display_movie_details(movie_details)
+            recommendations = self.movie_api.get_recommendations(movie['id'])
+            if recommendations:
+                recs = self.display_recommendations(recommendations)
+                details += f"\n\n{recs}"
+            else:
+                details += "\n\n No Recommendations found"
+            self.text_box.delete("1.0",tk.END)
+            self.text_box.insert(tk.END,details)
+        else:
+            messagebox.showerror("ERROR", "Movie details not found")
     
 
+    def filter_by_genre(self):
+        selected_genre = self.genre_var.get()
+        movie_title = self.entry.get()
+        if selected_genre and movie_title:
+            self.search_and_display()
+    
+    def save_to_favorites(self):
+        if self.current_movie:
+            with open("favorites.txt", "a") as file:
+                file.write(f"{self.current_movie['title']} - {self.current_movie['overview']} (Rating: {self.current_movie['vote_average']}/10)\n\n")
+                messagebox.showinfo("Saved", f"{self.current_movie['title']} has been saved to favorites!")
+    def display_movie_details(self,movie):
+        details = f"{self.current_movie['title']} - {self.current_movie['overview']} (Rating: {self.current_movie['vote_average']}/10)\n\n"
+        return details
+
+    def display_recommendations(self,recommendations):
+        recs = ""
+        for idx, movie in enumerate(recommendations,1):
+            movie_details = self.movie_api.get_movie_details(movie['id'])
+            rating = movie_details['vote_average'] if movie_details else "N/A"
+            recs += f"{idx}, {movie['title']} (Rating: {rating}/10)\n"
+        return recs
+    
+            
 
 
-
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = MovieRecommenderGUI(root,"sadasdasgregerreg")
 

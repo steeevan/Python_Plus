@@ -1,3 +1,0 @@
-hello Adam, Today we are learning about VS CODE GIT SOURCE CONTROL!
-What you think of this so far?
-It is cool.

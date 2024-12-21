@@ -1,195 +1,377 @@
 import pygame
 import sys
+import math
+import random
 
-# Initialize Pygame
 pygame.init()
 
 # Screen settings
-SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
+WIDTH, HEIGHT = 800, 600
+WIN = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Enhanced Tower Defense with Paths and Damage Flash")
+
 FPS = 60
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Tower Defense Game")
-clock = pygame.time.Clock()
+GRID_SIZE = 40
+ROWS = HEIGHT // GRID_SIZE
+COLS = WIDTH // GRID_SIZE
 
 # Colors
 WHITE = (255, 255, 255)
-GRAY = (30, 30, 30)
-BLUE = (0, 128, 255)
+GRAY = (200, 200, 200)
+GREEN = (0, 255, 0)
 RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+BROWN = (139,69,19)
+BLACK = (0, 0, 0)
 YELLOW = (255, 255, 0)
+DARKGREEN = (0, 155, 0)
+TRANSPARENT_GREEN = (0, 255, 0, 50)
+FLASH_COLOR = (255, 0, 0, 100)  # semi-transparent red
 
-# Game variables
-money = 500
-lives = 20
+# Fonts
+FONT = pygame.font.SysFont("arial", 20)
 
+# Game parameters
+STARTING_HEALTH = 20
+STARTING_SCORE = 0
+STARTING_MONEY = 200
+TOWER_COST = 50
 
-# Tower class
-class Tower:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.range = 150
-        self.damage = 10
-        self.width = 40
-        self.height = 40
-        self.cooldown = 500  # Time in milliseconds between shots
-        self.last_shot = pygame.time.get_ticks()
+# Enemy settings
+ENEMY_SPEED = 1.0
+ENEMY_SIZE = 20
+ENEMY_HEALTH = 10
 
-    def draw(self, screen):
-        pygame.draw.rect(screen, BLUE, (self.x - self.width // 2, self.y - self.height // 2, self.width, self.height))
+# Tower settings
+TOWER_RANGE = 150
+TOWER_DAMAGE = 2
+TOWER_FIRE_RATE = 60  # frames between shots
 
-    def attack(self, enemies, projectiles):
-        now = pygame.time.get_ticks()
-        if now - self.last_shot >= self.cooldown:
-            for enemy in enemies:
-                if self.in_range(enemy):
-                    # Fire a projectile
-                    projectiles.append(Projectile(self.x, self.y, enemy))
-                    self.last_shot = now
-                    break
+# Bullet settings
+BULLET_SPEED = 5
+BULLET_SIZE = 4
 
-    def in_range(self, enemy):
-        distance = ((self.x - enemy.x) ** 2 + (self.y - enemy.y) ** 2) ** 0.5
-        return distance <= self.range
+# Define the base location (the end point for all paths)
+BASE_X, BASE_Y = WIDTH - GRID_SIZE*2, HEIGHT // 2
 
+# Define paths as lists of (x,y) pixel coordinates (waypoints)
+# Each enemy will follow a sequence of these points in order.
+# We'll create three distinct paths that start at different vertical positions and then converge.
 
-# Enemy class
+# Top path: starts high and goes right, then curves down to meet at the base
+PATH_TOP = [
+    (0, HEIGHT//4),                  # start left side
+    (WIDTH//3, HEIGHT//4),           # go right a bit
+    (2*WIDTH//3, HEIGHT//3),         # move diagonally down
+    (BASE_X, BASE_Y)                 # final base point
+]
+
+# Middle path: starts in the middle row, goes right, slightly up or down, then to base
+PATH_MID = [
+    (0, HEIGHT//2),
+    (WIDTH//3, HEIGHT//2),
+    (2*WIDTH//3, HEIGHT//2),         # straight line and then final approach
+    (BASE_X, BASE_Y)
+]
+
+# Bottom path: starts low, goes right, then curves up
+PATH_BOT = [
+    (0, 3*HEIGHT//4),
+    (WIDTH//3, 3*HEIGHT//4),
+    (2*WIDTH//3, HEIGHT//2),         # curve upwards
+    (BASE_X, BASE_Y)
+]
+
+ALL_PATHS = [PATH_TOP, PATH_MID, PATH_BOT]
+
+# For drawing the grid and determining where towers can be placed, we consider all path waypoints.
+# However, these paths aren't just straight lines anymore. We'll mark grid cells that are near the paths.
+# To keep it simple, we'll mark the cells that each path passes through approximately.
+def path_cells_for_path(path):
+    # Convert each segment between waypoints into grid cells
+    cells = set()
+    # We'll sample along the path and mark corresponding grid cells
+    for i in range(len(path)-1):
+        x1, y1 = path[i]
+        x2, y2 = path[i+1]
+        dist = math.hypot(x2 - x1, y2 - y1)
+        steps = int(dist // (GRID_SIZE/2))
+        for s in range(steps+1):
+            x = x1 + (x2 - x1)*s/steps
+            y = y1 + (y2 - y1)*s/steps
+            gx = int(x // GRID_SIZE)
+            gy = int(y // GRID_SIZE)
+            cells.add((gx, gy))
+    return cells
+
+ALL_PATH_CELLS = set()
+for p in ALL_PATHS:
+    ALL_PATH_CELLS |= path_cells_for_path(p)
+
 class Enemy:
     def __init__(self, path):
         self.path = path
+        self.health = ENEMY_HEALTH
+        self.max_health = ENEMY_HEALTH
+        self.current_waypoint = 0
         self.x, self.y = self.path[0]
-        self.speed = 2
-        self.health = 50
-        self.radius = 15
-        self.current_path_index = 0
 
     def update(self):
-        if self.current_path_index < len(self.path) - 1:
-            target_x, target_y = self.path[self.current_path_index + 1]
-            dx, dy = target_x - self.x, target_y - self.y
-            distance = (dx ** 2 + dy ** 2) ** 0.5
+        # Move along the path from one waypoint to the next
+        if self.current_waypoint < len(self.path)-1:
+            tx, ty = self.path[self.current_waypoint+1]
+            dx = tx - self.x
+            dy = ty - self.y
+            dist = math.sqrt(dx*dx + dy*dy)
+            if dist != 0:
+                dx /= dist
+                dy /= dist
+            self.x += dx * ENEMY_SPEED
+            self.y += dy * ENEMY_SPEED
 
-            if distance <= self.speed:
-                self.x, self.y = target_x, target_y
-                self.current_path_index += 1
-            else:
-                self.x += dx / distance * self.speed
-                self.y += dy / distance * self.speed
+            # Check if we reached the next waypoint
+            if math.hypot(tx - self.x, ty - self.y) < ENEMY_SPEED:
+                self.x, self.y = tx, ty
+                self.current_waypoint += 1
 
-    def draw(self, screen):
-        pygame.draw.circle(screen, RED, (int(self.x), int(self.y)), self.radius)
+    def reached_end(self):
+        return self.current_waypoint == len(self.path)-1 and (self.x, self.y) == self.path[-1]
 
-    def take_damage(self, damage):
-        self.health -= damage
-        if self.health <= 0:
-            return True  # Enemy is dead
-        return False
+    def draw(self, surf):
+        # Draw enemy
+        rect = pygame.Rect(self.x - ENEMY_SIZE//2, self.y - ENEMY_SIZE//2, ENEMY_SIZE, ENEMY_SIZE)
+        pygame.draw.rect(surf, RED, rect)
+
+        # Draw health bar above the enemy
+        bar_width = ENEMY_SIZE
+        health_ratio = self.health / self.max_health
+        health_bar_width = int(bar_width * health_ratio)
+        bar_rect = pygame.Rect(self.x - ENEMY_SIZE//2, self.y - ENEMY_SIZE//2 - 8, bar_width, 5)
+        pygame.draw.rect(surf, BLACK, bar_rect)  # outline
+        inner_rect = pygame.Rect(self.x - ENEMY_SIZE//2, self.y - ENEMY_SIZE//2 - 8, health_bar_width, 5)
+        pygame.draw.rect(surf, GREEN, inner_rect)
+
+    def is_alive(self):
+        return self.health > 0
+
+    def get_rect(self):
+        return pygame.Rect(self.x - ENEMY_SIZE//2, self.y - ENEMY_SIZE//2, ENEMY_SIZE, ENEMY_SIZE)
 
 
-# Projectile class
-class Projectile:
-    def __init__(self, x, y, target):
+class Tower:
+    def __init__(self, grid_x, grid_y):
+        self.grid_x = grid_x
+        self.grid_y = grid_y
+        self.last_shot = 0
+
+    def draw(self, surf):
+        # Draw tower
+        pygame.draw.rect(surf, BLUE, (self.grid_x * GRID_SIZE, self.grid_y * GRID_SIZE, GRID_SIZE, GRID_SIZE))
+        # Draw range circle (outline)
+        center = (self.grid_x * GRID_SIZE + GRID_SIZE//2, self.grid_y * GRID_SIZE + GRID_SIZE//2)
+        pygame.draw.circle(surf, DARKGREEN, center, TOWER_RANGE, 1)
+
+    def can_shoot(self, frame_count):
+        return (frame_count - self.last_shot) > TOWER_FIRE_RATE
+
+    def get_center(self):
+        cx = self.grid_x * GRID_SIZE + GRID_SIZE//2
+        cy = self.grid_y * GRID_SIZE + GRID_SIZE//2
+        return cx, cy
+
+    def get_target_in_range(self, enemies):
+        cx, cy = self.get_center()
+        target_enemy = None
+        target_dist = None
+        for enemy in enemies:
+            if enemy.is_alive():
+                dist = math.sqrt((enemy.x - cx)**2 + (enemy.y - cy)**2)
+                if dist <= TOWER_RANGE:
+                    if target_dist is None or dist < target_dist:
+                        target_dist = dist
+                        target_enemy = enemy
+        return target_enemy
+
+    def shoot(self, enemies, frame_count, bullets):
+        target_enemy = self.get_target_in_range(enemies)
+        if target_enemy:
+            cx, cy = self.get_center()
+            ex, ey = target_enemy.x, target_enemy.y
+            dx = ex - cx
+            dy = ey - cy
+            dist = math.sqrt(dx*dx + dy*dy)
+            if dist != 0:
+                dx /= dist
+                dy /= dist
+            # Create a bullet
+            bullets.append(Bullet(cx, cy, dx, dy, TOWER_DAMAGE))
+            self.last_shot = frame_count
+
+
+class Bullet:
+    def __init__(self, x, y, dx, dy, damage):
         self.x = x
         self.y = y
-        self.target = target
-        self.speed = 5
-        self.radius = 5
+        self.dx = dx
+        self.dy = dy
+        self.damage = damage
 
     def update(self):
-        dx, dy = self.target.x - self.x, self.target.y - self.y
-        distance = (dx ** 2 + dy ** 2) ** 0.5
+        self.x += self.dx * BULLET_SPEED
+        self.y += self.dy * BULLET_SPEED
 
-        if distance <= self.speed:
-            # Hit the target
-            self.x, self.y = self.target.x, self.target.y
-            return True
-        else:
-            self.x += dx / distance * self.speed
-            self.y += dy / distance * self.speed
+    def draw(self, surf):
+        pygame.draw.circle(surf, YELLOW, (int(self.x), int(self.y)), BULLET_SIZE)
 
-        return False
+    def get_rect(self):
+        return pygame.Rect(self.x - BULLET_SIZE, self.y - BULLET_SIZE, BULLET_SIZE*2, BULLET_SIZE*2)
 
-    def draw(self, screen):
-        pygame.draw.circle(screen, YELLOW, (int(self.x), int(self.y)), self.radius)
+    def off_screen(self):
+        return self.x < 0 or self.x > WIDTH or self.y < 0 or self.y > HEIGHT
 
 
-# Game manager
-class GameManager:
-    def __init__(self):
-        self.towers = [Tower(300, 200), Tower(500, 400)]
-        self.enemies = []
-        self.projectiles = []
-        self.path = [
-            (50, 550), (150, 550), (150, 450), (300, 450),
-            (300, 300), (600, 300), (600, 100), (750, 100)
-        ]
-
-    def update(self):
-        for enemy in self.enemies[:]:
-            enemy.update()
-            if enemy.health <= 0:
-                self.enemies.remove(enemy)
-
-        for projectile in self.projectiles[:]:
-            if projectile.update():
-                # Projectile hit the target
-                if projectile.target.take_damage(10):
-                    self.enemies.remove(projectile.target)
-                self.projectiles.remove(projectile)
-
-        for tower in self.towers:
-            tower.attack(self.enemies, self.projectiles)
-
-    def draw(self, screen):
-        # Draw the path
-        for i in range(len(self.path) - 1):
-            pygame.draw.line(screen, WHITE, self.path[i], self.path[i + 1], 3)
-
-        # Draw towers, enemies, and projectiles
-        for tower in self.towers:
-            tower.draw(screen)
-
-        for enemy in self.enemies:
-            enemy.draw(screen)
-
-        for projectile in self.projectiles:
-            projectile.draw(screen)
-
-    def add_enemy(self):
-        self.enemies.append(Enemy(self.path))
+def draw_grid(surf):
+    for r in range(ROWS):
+        for c in range(COLS):
+            rect = pygame.Rect(c*GRID_SIZE, r*GRID_SIZE, GRID_SIZE, GRID_SIZE)
+            color = GRAY
+            if (c, r) in ALL_PATH_CELLS:
+                color = BROWN
+            pygame.draw.rect(surf, color, rect, 1)
 
 
-# Main game loop
 def main():
-    running = True
-    game_manager = GameManager()
+    clock = pygame.time.Clock()
+    run = True
+
+    health = STARTING_HEALTH
+    score = STARTING_SCORE
+    money = STARTING_MONEY
+
+    towers = []
+    enemies = []
+    bullets = []
+
     spawn_timer = 0
+    frame_count = 0
 
-    while running:
-        screen.fill(GRAY)  # Background color
+    damage_flash_timer = 0  # frames to show flash after damage
 
-        # Handle events
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+    while run:
+        clock.tick(FPS)
+        frame_count += 1
 
-        # Spawn enemies every 2 seconds
-        spawn_timer += clock.get_time()
-        if spawn_timer >= 2000:  # 2 seconds
-            game_manager.add_enemy()
+        # Spawn enemies periodically
+        spawn_timer += 1
+        if spawn_timer > 120:  # Every 2 seconds at 60 FPS
+            chosen_path = random.choice(ALL_PATHS)
+            enemies.append(Enemy(chosen_path))
             spawn_timer = 0
 
-        # Update and draw
-        game_manager.update()
-        game_manager.draw(screen)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = pygame.mouse.get_pos()
+                gx = mx // GRID_SIZE
+                gy = my // GRID_SIZE
+                # Check if not on path and no tower already there
+                if (gx, gy) not in ALL_PATH_CELLS:
+                    if all(not (t.grid_x == gx and t.grid_y == gy) for t in towers):
+                        # Check if we can afford the tower
+                        if money >= TOWER_COST:
+                            towers.append(Tower(gx, gy))
+                            money -= TOWER_COST
 
-        # Update the display
+        # Update enemies
+        enemies_to_remove = []
+        for e in enemies:
+            e.update()
+            if e.reached_end():
+                # Enemy reached the base - deal damage
+                health -= 1
+                damage_flash_timer = 15  # flash for 15 frames
+                enemies_to_remove.append(e)
+            elif not e.is_alive():
+                score += 1
+                enemies_to_remove.append(e)
+        for e in enemies_to_remove:
+            if e in enemies:
+                enemies.remove(e)
+
+        # Towers shoot bullets
+        for t in towers:
+            if t.can_shoot(frame_count):
+                t.shoot(enemies, frame_count, bullets)
+
+        # Update bullets
+        bullets_to_remove = []
+        for b in bullets:
+            b.update()
+            bullet_rect = b.get_rect()
+            hit_enemy = None
+            for en in enemies:
+                if en.is_alive() and bullet_rect.colliderect(en.get_rect()):
+                    en.health -= b.damage
+                    hit_enemy = en
+                    break
+            if hit_enemy or b.off_screen():
+                bullets_to_remove.append(b)
+        for b in bullets_to_remove:
+            if b in bullets:
+                bullets.remove(b)
+
+        # Check if game is over
+        if health <= 0:
+            run = False
+
+        # Drawing
+        WIN.fill(WHITE)
+        draw_grid(WIN)
+
+        for t in towers:
+            t.draw(WIN)
+        for e in enemies:
+            e.draw(WIN)
+        for b in bullets:
+            b.draw(WIN)
+
+        # Draw HUD
+        health_text = FONT.render(f"Health: {health}", True, BLACK)
+        score_text = FONT.render(f"Score: {score}", True, BLACK)
+        money_text = FONT.render(f"Money: {money}", True, BLACK)
+        WIN.blit(health_text, (10, 10))
+        WIN.blit(score_text, (10, 30))
+        WIN.blit(money_text, (10, 50))
+
+        # Damage flash
+        if damage_flash_timer > 0:
+            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            overlay.fill(FLASH_COLOR)
+            WIN.blit(overlay, (0,0))
+            damage_flash_timer -= 1
+
         pygame.display.flip()
-        clock.tick(FPS)
+
+    # Game over screen
+    WIN.fill(WHITE)
+    game_over_text = FONT.render("Game Over! Press any key to exit.", True, BLACK)
+    final_score_text = FONT.render(f"Final Score: {score}", True, BLACK)
+    WIN.blit(game_over_text, (WIDTH//2 - game_over_text.get_width()//2, HEIGHT//2 - 20))
+    WIN.blit(final_score_text, (WIDTH//2 - final_score_text.get_width()//2, HEIGHT//2 + 20))
+    pygame.display.flip()
+
+    # Wait for exit
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                waiting = False
+            elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                waiting = False
 
     pygame.quit()
     sys.exit()
-
 
 if __name__ == "__main__":
     main()

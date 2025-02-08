@@ -1,0 +1,43 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Add Comment{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <h2>Comment on Post by {{ post.author.username }}</h2>
+        <div class="card mb-3">
+            <div class="card-body">
+                {% if post.content %}
+                    <p>{{ post.content }}</p>
+                {% endif %}
+                {% if post.image %}
+                    <img src="{{ url_for('static', filename='uploads/' ~ post.image) }}" class="img-fluid" alt="Post Image">
+                {% endif %}
+                <p class="text-muted">{{ post.timestamp.strftime('%Y-%m-%d %H:%M') }}</p>
+            </div>
+        </div>
+        <form method="POST">
+            {{ form.hidden_tag() }}
+            <div class="mb-3">
+                {{ form.content.label(class="form-label") }}
+                {{ form.content(class="form-control", rows=3) }}
+                {% for error in form.content.errors %}
+                    <div class="text-danger">{{ error }}</div>
+                {% endfor %}
+            </div>
+            {{ form.submit(class="btn btn-primary") }}
+        </form>
+        {% if comments %}
+            <div class="mt-4">
+                <h5>Existing Comments:</h5>
+                {% for comment in comments %}
+                    <div class="mb-2">
+                        <strong>{{ comment.user.username }}</strong> <small class="text-muted">{{ comment.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+                        <p>{{ comment.content }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,5 @@
+discord.py
+python-dotenv
+asyncio
+logging
+sqlite3  # Optional: If using an SQLite database

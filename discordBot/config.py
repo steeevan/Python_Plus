@@ -6,4 +6,4 @@ load_dotenv()
 
 #bot configuration
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-COMMAND_PREFIX = "!"
+COMMAND_PREFIX = "$"

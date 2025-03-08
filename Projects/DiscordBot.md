@@ -248,4 +248,4 @@ Now that you’ve built the core commands, try improving them:
 
 ✅  **Expand `!weather` to show a weekly forecast** .
 
-Let me know if you need **more challenges!** 🚀🔥
+

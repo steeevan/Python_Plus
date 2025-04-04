@@ -30,11 +30,7 @@ class PongGame:
             self.ai.move(up=False)
         
 
-        #move plater (simple follow ball AI)
-        if self.ball.rect.centery > self.player.rect.centery:
-            self.player.move(up=False)
-        else:
-            self.player.move(up=True)
+        
         
         self.ball.move()
 

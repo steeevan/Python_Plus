@@ -1,18 +1,12 @@
-from game.game import PongGame
-import pygame
-import sys
+from game.game import Game
 
-game = PongGame()
+def main():
+    game = Game()
+    while True:
+        game.handle_events()
+        game.update()
+        game.draw()
+        game.clock.tick(60)
 
-while True:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-    
-    action = 0 # replace later with AI agent 
-    reward, done = game.step(action)
-    game.render()
-
-    if done:
-        game.reset()
+if __name__ == '__main__':
+    main()

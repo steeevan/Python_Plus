@@ -31,7 +31,13 @@ class PongGame:
         
 
         
-        
+        keys = pygame.key.get_pressed()
+
+        # Player paddle movement (W/S keys)
+        if keys[pygame.K_w]:
+            self.player.move(up=True)
+        if keys[pygame.K_s]:
+            self.player.move(up=False)
         self.ball.move()
 
 
@@ -57,3 +63,8 @@ class PongGame:
         pygame.display.flip()
         self.clock.tick(60)
 
+    
+
+        
+
+        

@@ -1,4 +1,5 @@
 import cv2
+import torch
 
 class ObjectDetector:
     def __init__(self,
@@ -30,3 +31,14 @@ class ObjectDetector:
             })
 
         return results
+class YOLODetector:
+    def __init__(self,model_name='yolov5'):
+        self.model = torch.hub.load('ultralytics/yolov5',model_name,pretrained = True)
+        self.model.conf = 0.3 # confidence threshold
+    
+    def detect(self,frame):
+        img_rgb = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
+        results = self.model(img_rgb)
+        return results
+
+

@@ -6,7 +6,7 @@ class Tower:
         self.y = y
         self.range = 100
         self.damage = 10
-        self.image = pygame.image.load("assets/images/tower.png")
+        self.image = pygame.image.load("TowerDefense/tower.png")
         self.rect = self.image.get_rect(center=(self.x,self.y))
 
     def draw(self,screen):

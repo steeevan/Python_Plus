@@ -6,7 +6,7 @@ class Enemy:
         self.path = path
         self.speed = 2
         self.health = 50
-        self.image = pygame.image.load("assets/images/enemy.png")
+        self.image = pygame.image.load("TowerDefense/enemy.png")
         self.rect = self.image.get_rect(center=(self.x,self.y))
         self.current_path_index = 0
 
